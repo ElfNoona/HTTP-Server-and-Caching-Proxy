@@ -162,3 +162,67 @@ func (res *HTTPResponse) WriteTo(w io.Writer) (int64, error) {
 	return int64(n), err
 }
 
+// ParseResponseHeader parses raw HTTP response headers into an HTTPResponse struct.
+func ParseResponseHeader(rawHeader []byte) (*HTTPResponse, error) {
+	if len(rawHeader) > MaxHeaderLength {
+		return nil, NewStatusError(StatusHeaderTooLarge, "response header fields too large")
+	}
+
+	rawStr := string(rawHeader)
+	lines := strings.Split(rawStr, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], "\r")
+	}
+
+	var statusLine string
+	var headerLines []string
+	foundStatusLine := false
+
+	for _, l := range lines {
+		if !foundStatusLine {
+			if l == "" {
+				continue
+			}
+			statusLine = l
+			foundStatusLine = true
+		} else {
+			if l == "" {
+				break
+			}
+			headerLines = append(headerLines, l)
+		}
+	}
+
+	if !foundStatusLine {
+		return nil, NewStatusError(StatusBadRequest, "empty response line")
+	}
+
+	// Status line format: PROTO STATUS REASON
+	parts := strings.SplitN(statusLine, " ", 3)
+	if len(parts) < 2 {
+		return nil, NewStatusError(StatusBadRequest, "malformed response status line")
+	}
+
+	proto := parts[0]
+	code, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, NewStatusError(StatusBadRequest, "invalid response status code")
+	}
+
+	headers := make(map[string]string)
+	for _, line := range headerLines {
+		colonIdx := strings.IndexByte(line, ':')
+		if colonIdx == -1 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(line[:colonIdx]))
+		val := strings.TrimSpace(line[colonIdx+1:])
+		headers[key] = val
+	}
+
+	return &HTTPResponse{
+		Proto:      proto,
+		StatusCode: code,
+		Headers:    headers,
+	}, nil
+}

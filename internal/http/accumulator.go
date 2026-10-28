@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -170,4 +172,109 @@ func (a *BufferAccumulator) readExact(length int64, timeout time.Duration) ([]by
 	}
 
 	return result, nil
+}
+
+// ReadNextResponse parses and returns the next complete HTTPResponse from the stream.
+// It sets a socket read deadline whenever performing network I/O.
+func (a *BufferAccumulator) ReadNextResponse(timeout time.Duration) (*HTTPResponse, error) {
+	for {
+		delimIdx := bytes.Index(a.buf, []byte("\r\n\r\n"))
+		if delimIdx == -1 {
+			if len(a.buf) > MaxHeaderLength {
+				return nil, NewStatusError(StatusHeaderTooLarge, "Response Header Fields Too Large")
+			}
+
+			if timeout > 0 {
+				_ = a.conn.SetReadDeadline(time.Now().Add(timeout))
+			} else {
+				_ = a.conn.SetReadDeadline(time.Time{})
+			}
+
+			tmp := make([]byte, 2048)
+			n, err := a.conn.Read(tmp)
+			if n > 0 {
+				a.buf = append(a.buf, tmp[:n]...)
+			}
+			if err != nil {
+				if err == io.EOF && len(a.buf) == 0 {
+					return nil, io.EOF
+				}
+				return nil, err
+			}
+			continue
+		}
+
+		if delimIdx > MaxHeaderLength {
+			return nil, NewStatusError(StatusHeaderTooLarge, "Response Header Fields Too Large")
+		}
+
+		rawHeader := a.buf[:delimIdx]
+		a.buf = a.buf[delimIdx+4:]
+
+		res, err := ParseResponseHeader(rawHeader)
+		if err != nil {
+			return nil, err
+		}
+
+		// Body extraction
+		// 304 Not Modified and 204 No Content must not contain a body
+		if res.StatusCode == StatusNotModified || res.StatusCode == 204 {
+			res.Body = nil
+			return res, nil
+		}
+
+		isChunked := false
+		if te, ok := res.Headers["transfer-encoding"]; ok {
+			if strings.Contains(strings.ToLower(te), "chunked") {
+				isChunked = true
+			}
+		}
+
+		var contentLength int64
+		if clStr, ok := res.Headers["content-length"]; ok {
+			if cl, clErr := strconv.ParseInt(strings.TrimSpace(clStr), 10, 64); clErr == nil && cl >= 0 {
+				contentLength = cl
+			}
+		}
+
+		if isChunked {
+			for {
+				decoded, bytesConsumed, complete, chunkErr := DecodeChunked(a.buf)
+				if chunkErr != nil {
+					return nil, chunkErr
+				}
+				if complete {
+					a.buf = a.buf[bytesConsumed:]
+					res.Body = decoded
+					break
+				}
+
+				if timeout > 0 {
+					_ = a.conn.SetReadDeadline(time.Now().Add(timeout))
+				} else {
+					_ = a.conn.SetReadDeadline(time.Time{})
+				}
+
+				tmp := make([]byte, 2048)
+				n, readErr := a.conn.Read(tmp)
+				if n > 0 {
+					a.buf = append(a.buf, tmp[:n]...)
+				}
+				if readErr != nil {
+					if readErr == io.EOF {
+						return nil, io.ErrUnexpectedEOF
+					}
+					return nil, readErr
+				}
+			}
+		} else if contentLength > 0 {
+			body, readErr := a.readExact(contentLength, timeout)
+			if readErr != nil {
+				return nil, readErr
+			}
+			res.Body = body
+		}
+
+		return res, nil
+	}
 }
