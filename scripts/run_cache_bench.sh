@@ -9,3 +9,4 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$REPO_ROOT"
 python3 scripts/bench_exp2_zipf.py "$@"
+

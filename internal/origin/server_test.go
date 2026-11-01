@@ -129,3 +129,4 @@ func Example() {
 	fmt.Println("origin package initialized")
 	// Output: origin package initialized
 }
+

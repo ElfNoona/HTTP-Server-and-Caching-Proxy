@@ -137,3 +137,4 @@ func (s *StaticDispatcher) Serve(req *http.HTTPRequest) (*http.HTTPResponse, err
 
 	return res, nil
 }
+

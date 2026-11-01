@@ -154,3 +154,4 @@ func TestProxyEndToEndCache(t *testing.T) {
 		t.Errorf("Request 3: expected 0 body bytes for 304 response, got %d bytes", len(res3.Body))
 	}
 }
+
