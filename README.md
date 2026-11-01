@@ -6,18 +6,6 @@
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
 A Layer-4 raw-socket HTTP/1.1 origin server and concurrent forward caching proxy implemented strictly from first principles in Go without importing or referencing `net/http`. Features swappable concurrency architectures (Bounded Worker Pool vs. Goroutine-per-Connection), sliding-window TCP stream framing, persistent upstream connection pooling, and an RFC 9111 compliant concurrent in-memory LRU cache engine.
-
----
-
-## Team Information (Team CSE-34)
-
-| Name | Roll Number | Role | Core Deliverables |
-| :--- | :--- | :--- | :--- |
-| **Arijit Sanyal** | 24051243 | **Origin Engine Lead** | Protocol framing, sliding-window buffer accumulator, chunked parser, status error mappings |
-| **Soumyadeep Saha** | 25057074 | **Systems Lead** | Swappable concurrency runtimes (`pool.go`, `goroutine.go`), sandboxed static dispatcher (CWE-22) |
-| **Arhan kumar Hazra** | 24156124 | **Proxy Lead** | Hop-by-hop header sanitizer, upstream persistent connection pool, proxy request rewriter |
-| **Kuldeep Kumar** | 24156145 | **Caching & Evaluation Lead** | Thread-safe LRU cache engine ($O(1)$ eviction), RFC conditional validator, evaluation harness |
-
 ---
 
 ## 1. System Overview & Architectural Invariants
